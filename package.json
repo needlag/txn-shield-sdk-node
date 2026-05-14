@@ -22,7 +22,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "publish:dry-run": "pnpm build && npm publish --dry-run --access public",
     "test": "vitest run",
     "lint": "tsc --noEmit -p tsconfig.json"
@@ -31,6 +31,10 @@
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/supertest": "^6.0.3",
-    "supertest": "^7.0.0"
-  }
+    "supertest": "^7.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "packageManager": "pnpm@10.8.1"
 }
