@@ -20,7 +20,7 @@ const shield = createTxnShieldNode({
 });
 
 const result = await shield.evaluate({
-  intent: "export_customers",
+  operationKey: "invoice.export",
   actor: { id: "user_123", authenticated: true, roles: ["finance_manager"] },
   resource: { type: "customer_export", id: "batch_123" },
   requestData: { requestedCount: 250 },

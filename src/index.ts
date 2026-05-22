@@ -33,7 +33,8 @@ export type TxnShieldSession = {
 };
 
 export type TxnShieldEvaluationInput = {
-  intent: string;
+  operation?: string;
+  operationKey?: string;
   actor: TxnShieldActor;
   resource: TxnShieldResource;
   requestData?: Record<string, unknown>;
@@ -62,6 +63,13 @@ export type TxnShieldEvaluationResult = {
   score: number;
   riskBand: RiskBand;
   reasons: string[];
+  operationKey?: string;
+  operationDisplayName?: string;
+  actionType?: string;
+  resourceType?: string;
+  sensitivity?: "low" | "medium" | "high" | "critical";
+  category?: string;
+  policyId?: string;
   challenge?: {
     type: ChallengeType;
     id: string;
@@ -72,6 +80,7 @@ export type TxnShieldEvaluationResult = {
   };
   telemetryId: string;
   policyVersionId?: string;
+  warnings?: string[];
   aiAssessment?: {
     provider: string;
     mode: "disabled" | "byok" | "managed";
@@ -126,7 +135,8 @@ type ChallengeHandlers = {
 };
 
 type ProtectRouteOptions = {
-  intent: string;
+  operation?: string;
+  operationKey?: string;
   resource: (req: TxnShieldMiddlewareRequest) => TxnShieldResource;
   actor: (req: TxnShieldMiddlewareRequest) => TxnShieldActor;
   requestData?: (req: TxnShieldMiddlewareRequest) => Record<string, unknown>;
@@ -287,13 +297,18 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
   const evaluateUrl = joinUrl(options.apiBaseUrl, options.evaluatePath ?? "/api/evaluate");
 
   const evaluate = async (input: TxnShieldEvaluationInput) => {
+    const operationKey = input.operationKey ?? input.operation;
+    if (!operationKey) {
+      throw new Error("TxnShield evaluate requires operationKey.");
+    }
+    const requestPayload = { ...input, operationKey };
     const response = await fetchImpl(evaluateUrl, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${options.secretKey}`,
       },
-      body: JSON.stringify(input),
+      body: JSON.stringify(requestPayload),
     });
     const payload = await parseJsonResponse(response);
 
@@ -308,6 +323,10 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
   const protect = (definition: ProtectRouteOptions): TxnShieldMiddleware => {
     return async (req, res, next) => {
       try {
+        const operationKey = definition.operationKey ?? definition.operation;
+        if (!operationKey) {
+          throw new Error("TxnShield protect requires operationKey.");
+        }
         const recentHumanSignalAt = readHeader(req, "x-txnshield-recent-human-signal") || undefined;
         const session =
           definition.session?.(req) ??
@@ -328,7 +347,7 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
 
         const challengeResult = await extractChallengeResult(req, definition.challenge);
         const evaluation = await evaluate({
-          intent: definition.intent,
+          operationKey,
           actor: {
             authenticated: true,
             roles: [],

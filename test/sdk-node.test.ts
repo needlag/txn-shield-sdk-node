@@ -20,7 +20,7 @@ describe("createTxnShieldNode", () => {
     });
 
     const response = await shield.evaluate({
-      intent: "export_records",
+      operationKey: "invoice.export",
       actor: { id: "user_1", authenticated: true, roles: ["support"] },
       resource: { type: "customer", id: "cus_1" },
       requestData: { requestedCount: 20 },
@@ -36,6 +36,10 @@ describe("createTxnShieldNode", () => {
         }),
       }),
     );
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init?.body))).toEqual(
+      expect.objectContaining({ operationKey: "invoice.export" }),
+    );
   });
 
   it("surfaces hosted API errors", async () => {
@@ -48,7 +52,7 @@ describe("createTxnShieldNode", () => {
 
     await expect(
       shield.evaluate({
-        intent: "export_records",
+        operationKey: "invoice.export",
         actor: { id: "user_1" },
         resource: { type: "customer", id: "cus_1" },
       }),
@@ -65,7 +69,7 @@ describe("createTxnShieldNode", () => {
     const next = vi.fn();
 
     await shield.protect({
-      intent: "export_records",
+      operationKey: "invoice.export",
       actor: () => ({ id: "user_1", roles: ["support"] }),
       resource: () => ({ type: "customer", id: "cus_1" }),
     })(
@@ -105,7 +109,7 @@ describe("createTxnShieldNode", () => {
     const status = vi.fn(() => ({ json }));
 
     await shield.protect({
-      intent: "export_records",
+      operationKey: "invoice.export",
       actor: () => ({ id: "user_1", roles: ["support"] }),
       resource: () => ({ type: "customer", id: "cus_1" }),
     })({ body: {}, query: {} }, { status }, vi.fn());

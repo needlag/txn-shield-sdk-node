@@ -12,7 +12,7 @@ const shield = createTxnShieldNode({
 app.post(
   "/customers/:id/export",
   shield.protect({
-    intent: "export_records",
+    operationKey: "invoice.export",
     actor: (req) => ({ id: req.user?.id ?? "anonymous", roles: ["support"] }),
     resource: (req) => ({ type: "customer", id: req.params.id }),
     requestData: (req) => ({ requestedCount: Number(req.body.requestedCount ?? 1) }),
