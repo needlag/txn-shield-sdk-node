@@ -16,7 +16,7 @@ import { createTxnShieldNode } from "@txnshield/sdk-node";
 
 const shield = createTxnShieldNode({
   secretKey: process.env.TXNSHIELD_SECRET_KEY!,
-  apiBaseUrl: "https://api.txnshield.com",
+  apiBaseUrl: "https://txnshield.com",
 });
 
 const result = await shield.evaluate({
