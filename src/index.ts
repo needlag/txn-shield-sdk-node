@@ -1,3 +1,6 @@
+import { createConnector, type ConnectorOptions } from "./connector";
+export type { ConnectorOptions, ConnectorRoute, ConnectorRequest, ConnectorResponse } from "./connector";
+
 export type TxnDecision = "allow" | "allow_redacted" | "step_up_required" | "throttle" | "deny";
 export type RiskBand = "low" | "medium" | "high";
 export type ChallengeType = "passkey" | "proof_token" | "interactive_challenge";
@@ -40,6 +43,7 @@ export type TxnShieldEvaluationInput = {
   requestData?: Record<string, unknown>;
   session?: TxnShieldSession;
   metadata?: {
+    connectorRouteId?: string;
     requestedCount?: number;
     velocityWindowCount?: number;
     abnormalSequence?: boolean;
@@ -88,6 +92,22 @@ export type TxnShieldEvaluationResult = {
     scoreDelta: number;
     reasons: string[];
     summary: Record<string, unknown>;
+    proposal?: {
+      decision: TxnDecision;
+      riskScore: number;
+      reasons: string[];
+      appliedRules: string[];
+      missingContext: string[];
+    };
+    decisionMode?: "disabled" | "observe" | "hybrid" | "autonomous" | "legacy_advisory";
+    influence?: number;
+    skillVersion?: string;
+    model?: string;
+    configId?: string;
+    baselineDecision?: TxnDecision;
+    baselineScore?: number;
+    finalDecision?: TxnDecision;
+    fallbackApplied?: boolean;
   };
 };
 
@@ -97,6 +117,17 @@ export type CreateTxnShieldNodeOptions = {
   evaluatePath?: string;
   fetchImpl?: typeof fetch;
 };
+
+export class TxnShieldEvaluateError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly payload: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "TxnShieldEvaluateError";
+  }
+}
 
 type HeaderReader = {
   header?: (name: string) => string | undefined;
@@ -189,7 +220,7 @@ function assertEvaluationResult(value: unknown): TxnShieldEvaluationResult {
   if (
     !result ||
     typeof result !== "object" ||
-    typeof result.decision !== "string" ||
+    !["allow", "allow_redacted", "step_up_required", "throttle", "deny"].includes(result.decision ?? "") ||
     typeof result.score !== "number" ||
     typeof result.riskBand !== "string" ||
     !Array.isArray(result.reasons) ||
@@ -296,7 +327,7 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const evaluateUrl = joinUrl(options.apiBaseUrl, options.evaluatePath ?? "/api/evaluate");
 
-  const evaluate = async (input: TxnShieldEvaluationInput) => {
+  const evaluate = async (input: TxnShieldEvaluationInput, requestOptions: { signal?: AbortSignal } = {}) => {
     const operationKey = input.operationKey ?? input.operation;
     if (!operationKey) {
       throw new Error("TxnShield evaluate requires operationKey.");
@@ -309,12 +340,13 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
         authorization: `Bearer ${options.secretKey}`,
       },
       body: JSON.stringify(requestPayload),
+      signal: requestOptions.signal,
     });
     const payload = await parseJsonResponse(response);
 
     if (!response.ok) {
       const message = typeof payload.error === "string" ? payload.error : "TxnShield evaluate failed.";
-      throw new Error(message);
+      throw new TxnShieldEvaluateError(message, response.status, payload);
     }
 
     return assertEvaluationResult(payload);
@@ -394,7 +426,7 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
     };
   };
 
-  return {
+  const client = {
     evaluate,
     protect,
     redact<T>(payload: T, evaluation: { redaction?: { fields: string[]; strategy: RedactionStrategy } }) {
@@ -409,4 +441,5 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
       return redacted;
     },
   };
+  return { ...client, connector: (connectorOptions: ConnectorOptions) => createConnector(options, evaluate, client.redact, connectorOptions) };
 }
