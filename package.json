@@ -1,6 +1,6 @@
 {
   "name": "@txnshield/sdk-node",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "private": false,
   "license": "MIT",
   "type": "module",
@@ -22,7 +22,7 @@
     }
   },
   "scripts": {
-    "build": "../../node_modules/.bin/tsup src/index.ts --format esm,cjs --dts",
+    "build": "../../node_modules/.bin/tsup src/index.ts --format esm,cjs --dts --clean",
     "publish:dry-run": "pnpm build && npm publish --dry-run --access public",
     "test": "../../node_modules/.bin/vitest run",
     "lint": "../../node_modules/.bin/tsc --noEmit -p tsconfig.json"

@@ -44,7 +44,8 @@ describe("central Express connector", () => {
 
   it.each([["deny", 403], ["throttle", 429], ["step_up_required", 409]] as const)("enforces %s before the handler", async (decision, code) => {
     const { connector } = client({ ...result, decision, challenge: { type: "proof_token", id: "challenge1" } });
-    const res = response(); const next = vi.fn(); await connector(request(), res, next);
+    const res = response(); const next = vi.fn(); const req = request(); await connector(req, res, next);
+    expect(req.txnshield?.evaluation.decision).toBe(decision);
     expect(res.code).toBe(code); expect(next).not.toHaveBeenCalled(); expect(res.payload).not.toHaveProperty("evaluation");
     if (decision === "step_up_required") expect(res.payload).toHaveProperty("challenge.id", "challenge1");
   });

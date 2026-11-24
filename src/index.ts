@@ -1,5 +1,7 @@
 import { createConnector, type ConnectorOptions } from "./connector";
-export type { ConnectorOptions, ConnectorRoute, ConnectorRequest, ConnectorResponse } from "./connector";
+import { createRouteConnector, type RouteConnectorOptions } from "./route";
+export type { RouteConnectorOptions } from "./route";
+export type { ConnectorContext, ConnectorOptions, ConnectorRoute, ConnectorRequest, ConnectorResponse } from "./connector";
 
 export type TxnDecision = "allow" | "allow_redacted" | "step_up_required" | "throttle" | "deny";
 export type RiskBand = "low" | "medium" | "high";
@@ -441,5 +443,10 @@ export function createTxnShieldNode(options: CreateTxnShieldNodeOptions) {
       return redacted;
     },
   };
-  return { ...client, connector: (connectorOptions: ConnectorOptions) => createConnector(options, evaluate, client.redact, connectorOptions) };
+  return {
+    ...client,
+    connector: (connectorOptions: ConnectorOptions) => createConnector(options, evaluate, client.redact, connectorOptions),
+    route: <Context = unknown, RequestType extends Request = Request>(routeOptions: RouteConnectorOptions<Context, RequestType>, handler: (request: RequestType, context: Context) => Response | Promise<Response>) =>
+      createRouteConnector(options, evaluate, client.redact, routeOptions, handler),
+  };
 }

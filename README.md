@@ -6,6 +6,7 @@ It provides:
 
 - hosted transaction evaluation against your TxnShield SaaS
 - Express middleware for protected routes
+- a Next.js App Router adapter for existing Request/Response handlers
 - decision-aware redaction helpers
 - optional challenge verification hooks
 
@@ -91,3 +92,54 @@ Operations whose `actionType` is `export` require `metadata.requestedCount`; mis
 For step-up, your UI handles 409, presents your verification flow, and retries. Return `challengeResult` from `context` only after your backend verifies the proof and binds it to the user/action. The connector does not supply a generic verification UI or blindly trust browser `passed` flags. Optional session and risk metadata also come from this resolver.
 
 **Connection evidence:** the panel records the last successful policy evaluation for each mapping. This proves that the application reached the motor, not that every handler or response has been tested. Sandbox, paused and bypass decisions do not complete that evidence. Changing UI mode never changes runtime enforcement. The environment's existing pause/bypass controls still apply to evaluations.
+
+## Plug-n-play Next.js App Router
+
+Available in `@txnshield/sdk-node@0.5.0`. Map an existing authenticated JSON endpoint in **Connect application**, then wrap its existing HTTP method handler. Keep its authorization, validation and business logic. A browser SDK is not required by the new quick profiles.
+
+```ts
+// lib/txnshield.ts
+import "server-only";
+import { createTxnShieldNode } from "@txnshield/sdk-node";
+
+export const shield = createTxnShieldNode({
+  secretKey: process.env.TXNSHIELD_SECRET_KEY!,
+  apiBaseUrl: process.env.TXNSHIELD_API_BASE_URL!,
+});
+```
+
+```ts
+// In the existing app/api/customers/[id]/route.ts
+import { shield } from "@/lib/txnshield";
+import { getAuthenticatedUser } from "@/lib/auth"; // Your existing server helper.
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Rename the existing GET function to existingGET without changing its body.
+// Keep it in this file and replace its export with:
+export const GET = shield.route({
+  actor: async (request) => {
+    const user = await getAuthenticatedUser(request);
+    return { id: user?.id ?? "anonymous", authenticated: Boolean(user?.id), roles: user?.roles ?? [] };
+  },
+}, existingGET);
+```
+
+Map `GET /api/customers/:id` (including any public base path), using `:id` instead of `[id]`. Wrap each selected method. The original Request subtype (including NextRequest) and framework context, including asynchronous `params`, reach the handler unchanged. Application exceptions and Next.js redirects propagate; the handler is never automatically retried.
+
+The adapter shares the Express connector's matching, configuration, authentication, context and decision behavior. `actor(request, frameworkContext)` is required; optional `context(request, route, decodedParams, frameworkContext)` supplies trusted resource/session/metadata/challenge context. Export mappings require an authorized `metadata.requestedCount`, using the same plan the handler executes. Existing application access checks remain required.
+
+- Unmapped requests pass through unchanged when configuration is available. Only wrapped, mapped methods receive protection. A configuration failure blocks all requests reaching the wrapper.
+- Mapped responses use `Cache-Control: private, no-store`; CDN-specific cache headers are removed. Keep protected routes dynamic to prevent framework caching from skipping evaluation.
+- `allow_redacted` requires a structured JSON Response. It buffers at most **1 MiB** by default (`maxRedactionBytes`, up to 16 MiB), with a **5-second** stream deadline (`redactionTimeoutMs`, up to 60,000 ms). Invalid, compressed, unsupported, oversized or stalled responses return 503 without exposing the original body. The handler has already run at this response stage; use appropriate tests for mutations and never retry them automatically.
+- Redaction preserves status and cookies and removes invalidated content length/digest/cache validator headers. Non-JSON redaction, CSV, downloads and streaming need a dedicated integration. Passthrough mappings block a redaction decision before the handler.
+- Configuration/evaluation deadlines are the same as Express: `configTimeoutMs` defaults to 5,000 and `evaluationTimeoutMs` to 35,000. Deny, throttle, verification and unavailable protection stop before handler execution with 403, 429, 409 and 503 respectively; missing authentication returns 401.
+
+Pages Router, Server Actions and Edge runtime use the advanced guides; this adapter does not convert them to App Router handlers.
+
+## Assisted installation
+
+After mapping a route, **Download setup prompt** provides a Markdown file for Codex/Cursor in your application repository. It includes route configuration and SDK examples, preserves existing handlers/authentication, and asks for local enforcement tests and unresolved-route reporting. The file contains no secret key; configure secrets separately. It does not deploy or confirm that the application is connected. Send a real authenticated development request and inspect mapping status after verifying handler behavior locally.
+
+New quick policies explicitly ignore an absent browser signal during risk scoring. Supplied stale signals and other risk factors still count, and authentication/explicit verification requirements remain enforced. Existing policies retain their previous scoring.
